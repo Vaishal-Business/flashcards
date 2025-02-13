@@ -240,6 +240,8 @@
     <button onclick="closeFlashcardPopup()">Close</button>
   </div>
 
+  <!-- Import CSV Popup (will be created dynamically if needed) -->
+
   <script>
     let chapters = {};
     let currentChapter = null;
@@ -249,7 +251,6 @@
     function saveData() {
       localStorage.setItem("flashcardData", JSON.stringify(chapters));
     }
-
     function loadData() {
       const data = localStorage.getItem("flashcardData");
       if (data) {
@@ -262,7 +263,6 @@
       document.getElementById("overlay").style.display = "block";
       document.getElementById("chapterPopup").style.display = "block";
     }
-
     function closeChapterPopup() {
       document.getElementById("overlay").style.display = "none";
       document.getElementById("chapterPopup").style.display = "none";
@@ -273,7 +273,6 @@
       document.getElementById("flashcardOverlay").style.display = "block";
       document.getElementById("flashcardPopup").style.display = "block";
     }
-
     function closeFlashcardPopup() {
       document.getElementById("flashcardOverlay").style.display = "none";
       document.getElementById("flashcardPopup").style.display = "none";
@@ -285,7 +284,7 @@
       const chapNum = document.getElementById("chapterNumber").value;
       const qaText = document.getElementById("qaText").value;
       if (!chapName || !chapNum || !qaText) return;
-
+      
       // Parse flashcard data from provided text
       const flashcards = parseFlashcards(qaText);
       chapters[chapNum] = { name: chapName, flashcards: flashcards };
@@ -293,7 +292,6 @@
       closeChapterPopup();
       saveData();
     }
-
     function parseFlashcards(qaText) {
       const flashcards = [];
       const cardData = qaText.split(/\nFlashcard \d+/).slice(1); // split based on "Flashcard" label
@@ -308,7 +306,7 @@
       return flashcards;
     }
 
-    // Update Chapter Menu
+    // Update Chapter Menu and add Export/Import buttons
     function updateChapterMenu() {
       const menu = document.getElementById("chapterMenu");
       menu.innerHTML = "";
@@ -343,6 +341,20 @@
       addBtn.innerText = "Add Chapter";
       addBtn.onclick = showChapterPopup;
       menu.appendChild(addBtn);
+
+      // Export CSV Button
+      const exportBtn = document.createElement("button");
+      exportBtn.classList.add("add-card-btn");
+      exportBtn.innerText = "Export CSV";
+      exportBtn.onclick = exportCSV;
+      menu.appendChild(exportBtn);
+
+      // Import CSV Button
+      const importBtn = document.createElement("button");
+      importBtn.classList.add("add-card-btn");
+      importBtn.innerText = "Import CSV";
+      importBtn.onclick = showImportPopup;
+      menu.appendChild(importBtn);
     }
 
     // Show Flashcards for a Chapter
@@ -454,7 +466,6 @@
 
       // Allow flipping the card on click
       card.onclick = (e) => {
-        // Prevent clicks on the nav buttons from flipping the card
         if (e.target.tagName !== "BUTTON") {
           card.classList.toggle("flipped");
         }
@@ -472,6 +483,95 @@
       closeFlashcardPopup();
       showFlashcards(currentChapter);
       saveData();
+    }
+
+    // Export CSV functionality
+    function exportCSV() {
+      let csvContent = "Chapter,Chapter Name,Question,Answer\n";
+      for (const chap in chapters) {
+        const chapter = chapters[chap];
+        chapter.flashcards.forEach(fc => {
+          csvContent += `${chap},${chapter.name},"${fc.question}","${fc.answer}"\n`;
+        });
+      }
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", "flashcards.csv");
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Import CSV functionality
+    function showImportPopup() {
+      // Create import overlay/popup if not present
+      let importOverlay = document.getElementById("importOverlay");
+      if (!importOverlay) {
+        importOverlay = document.createElement("div");
+        importOverlay.className = "overlay";
+        importOverlay.id = "importOverlay";
+        document.body.appendChild(importOverlay);
+      }
+      let importPopup = document.getElementById("importPopup");
+      if (!importPopup) {
+        importPopup = document.createElement("div");
+        importPopup.className = "popup";
+        importPopup.id = "importPopup";
+        importPopup.innerHTML = `
+          <h3>Import CSV</h3>
+          <input type="file" id="importFile" accept=".csv" />
+          <button onclick="importCSV()">Import</button>
+          <button onclick="closeImportPopup()">Close</button>
+        `;
+        document.body.appendChild(importPopup);
+      }
+      importOverlay.style.display = "block";
+      importPopup.style.display = "block";
+    }
+    function closeImportPopup() {
+      document.getElementById("importOverlay").style.display = "none";
+      document.getElementById("importPopup").style.display = "none";
+    }
+    function importCSV() {
+      const fileInput = document.getElementById("importFile");
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Please select a file to import.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const csv = e.target.result;
+        const lines = csv.split("\n");
+        // Skip header line and process CSV rows
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i]) continue;
+          const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+          if (values.length < 4) continue;
+          const chap = values[0].trim();
+          const chapName = values[1].trim();
+          let question = values[2].trim();
+          let answer = values[3].trim();
+          // Remove surrounding quotes if present
+          if (question.startsWith('"') && question.endsWith('"')) {
+            question = question.substring(1, question.length - 1);
+          }
+          if (answer.startsWith('"') && answer.endsWith('"')) {
+            answer = answer.substring(1, answer.length - 1);
+          }
+          if (!chapters[chap]) {
+            chapters[chap] = { name: chapName, flashcards: [] };
+          }
+          chapters[chap].flashcards.push({ question, answer });
+        }
+        updateChapterMenu();
+        saveData();
+        closeImportPopup();
+      };
+      reader.readAsText(file);
     }
 
     // Initial load
